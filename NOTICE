@@ -1,0 +1,18 @@
+open-nla-audits
+Unofficial research project; not affiliated with or endorsed by Anthropic.
+
+This project builds on:
+
+* "Natural Language Autoencoders Produce Unsupervised Explanations of LLM Activations"
+  Fraser-Taliente, Kantamneni, Ong et al., Transformer Circuits Thread, 2026.
+  https://transformer-circuits.pub/2026/nla/
+
+* kitft/natural_language_autoencoders (Apache-2.0)
+  https://github.com/kitft/natural_language_autoencoders
+  src/nla_audit/nla/ re-implements behaviour of its nla_inference.py and
+  nla/datagen/{stage0_extract,extractors}.py (sidecar checks, injection, AR scoring,
+  FVE definition, position sampling) for batched Hugging Face inference.
+  tests/fixtures/*.yaml are copies of the released checkpoints' nla_meta.yaml files.
+
+* Released NLA checkpoints: https://huggingface.co/collections/kitft/nla-models
+  (Qwen2.5-7B-Instruct base model: Apache-2.0 / Qwen licence terms apply.)
