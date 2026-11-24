@@ -1,0 +1,4 @@
+# Keep LF everywhere: Makefile and scripts run on Linux (WSL, Kaggle, Colab).
+* text=auto eol=lf
+*.parquet binary
+*.safetensors binary
