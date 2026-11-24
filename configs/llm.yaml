@@ -1,0 +1,62 @@
+# Free LLM providers, all reached through ONE OpenAI-compatible client
+# (src/nla_audit/llm_client.py). Model names and free-tier limits change often:
+# run `make check-providers` on day 1 and update this file from what it reports.
+#
+# Policy enforced in code (amendments 4 + 5 of the plan):
+#   * role "gen"   (data that trains a model) -> only models whose licence is in
+#                   gen_allowed_licences (Apache/MIT open weights). Never Gemini, never Llama.
+#   * role "judge" -> must come from a model FAMILY that never appears in the gen chain.
+#   * every call (cached or not) is appended to the ledger with provider + model + role.
+
+cache_path: cache/llm_cache.sqlite
+ledger_path: cache/llm_ledger.jsonl
+
+gen_allowed_licences: [apache-2.0, mit]
+
+providers:
+  cerebras:
+    base_url: https://api.cerebras.ai/v1
+    api_key_env: CEREBRAS_API_KEY
+    requests_per_minute: 30
+  groq:
+    base_url: https://api.groq.com/openai/v1
+    api_key_env: GROQ_API_KEY
+    requests_per_minute: 30
+  gemini:
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai/
+    api_key_env: GEMINI_API_KEY
+    requests_per_minute: 10
+  openrouter:
+    base_url: https://openrouter.ai/api/v1
+    api_key_env: OPENROUTER_API_KEY
+    requests_per_minute: 20
+
+# family + licence per model. "licence" here means: may outputs of this model be
+# used as TRAINING DATA under its terms? (Gemini API terms: no. Llama: attribution-encumbered.)
+models:
+  cerebras/gpt-oss-120b:            { family: gpt-oss, licence: apache-2.0 }
+  groq/openai/gpt-oss-120b:         { family: gpt-oss, licence: apache-2.0 }
+  cerebras/qwen-3-235b-a22b-instruct-2507: { family: qwen3, licence: apache-2.0 }
+  groq/qwen/qwen3-32b:              { family: qwen3, licence: apache-2.0 }
+  gemini/gemini-2.5-flash:          { family: gemini, licence: gemini-api-terms }
+  gemini/gemini-2.5-flash-lite:     { family: gemini, licence: gemini-api-terms }
+  groq/llama-3.3-70b-versatile:     { family: llama, licence: llama-3.3 }
+  cerebras/llama-3.3-70b:           { family: llama, licence: llama-3.3 }
+
+# Ordered fallback chains per role.
+roles:
+  gen:
+    - cerebras/gpt-oss-120b
+    - groq/openai/gpt-oss-120b
+    - cerebras/qwen-3-235b-a22b-instruct-2507
+    - groq/qwen/qwen3-32b
+  judge:
+    - gemini/gemini-2.5-flash
+    - groq/llama-3.3-70b-versatile
+    - cerebras/llama-3.3-70b
+    - gemini/gemini-2.5-flash-lite
+
+retry:
+  max_attempts_per_model: 5
+  base_delay_s: 2.0
+  max_delay_s: 120.0
