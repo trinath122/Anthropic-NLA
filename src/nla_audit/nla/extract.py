@@ -111,9 +111,12 @@ class LayerExtractor:
         # Run the decoder body only: the LM head would build [B, T, vocab] logits
         # (~7 GiB at B=8, T=4096) that we never use.
         body = getattr(self.model, "model", self.model)
+        # No padding -> no mask: SDPA then takes its causal memory-efficient kernel instead of
+        # materialising [B, heads, T, T] scores (1.7 GiB/row at T=4096 in fp32 on a T4).
+        attn_mask = None if bool(mask.all()) else mask.to(device)
         handle = self._layer.register_forward_hook(hook)
         try:
-            body(input_ids=ids.to(device), attention_mask=mask.to(device), use_cache=False)
+            body(input_ids=ids.to(device), attention_mask=attn_mask, use_cache=False)
         finally:
             handle.remove()
         h = captured["h"]
