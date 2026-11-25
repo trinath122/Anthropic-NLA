@@ -516,15 +516,24 @@ def real_backends(cfg: dict, profile: str) -> Backends:
     return Backends(tok, streams, load_extractor, load_av, load_ar, prov)
 
 
+def default_artifact_repo(token: str) -> str:
+    """<token owner's HF username>/open-nla-audits-artifacts (HF and GitHub names can differ)."""
+    from huggingface_hub import HfApi
+
+    return f"{HfApi(token=token).whoami()['name']}/open-nla-audits-artifacts"
+
+
 def _checkpointer(run_name: str, root: str, sync: bool) -> Checkpointer:
     syncer = None
     if sync:
         from nla_audit.runtime.resume import HFHubSyncer
 
-        repo = os.environ.get("HF_ARTIFACT_REPO")
-        if not repo:
-            raise SystemExit("--sync needs HF_ARTIFACT_REPO (and HF_TOKEN)")
-        syncer = HFHubSyncer(repo, token=os.environ.get("HF_TOKEN"))
+        token = os.environ.get("HF_TOKEN")
+        if not token:
+            raise SystemExit("--sync needs HF_TOKEN")
+        repo = os.environ.get("HF_ARTIFACT_REPO") or default_artifact_repo(token)
+        print(f"checkpoints -> private HF dataset {repo}")
+        syncer = HFHubSyncer(repo, token=token)
     return Checkpointer(run_name, root, syncer=syncer)
 
 
