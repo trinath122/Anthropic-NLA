@@ -35,5 +35,5 @@ prepush: lint test-offline secret-scan
 
 # Install a git pre-push hook that runs the secret scan
 hooks:
-	printf '#!/bin/sh\nif command -v python3 >/dev/null 2>&1; then exec python3 scripts/secret_scan.py; else exec python scripts/secret_scan.py; fi\n' > .git/hooks/pre-push
+	printf '#!/bin/sh\nexec sh scripts/pre-push.sh "$$@"\n' > .git/hooks/pre-push
 	chmod +x .git/hooks/pre-push
