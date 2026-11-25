@@ -82,8 +82,15 @@ class Extraction:
 class LayerExtractor:
     """Captures block-K output for a batch of token-id sequences (right-padded)."""
 
-    def __init__(self, model: Any, layer_index: int, pad_token_id: int) -> None:
+    def __init__(
+        self, model: Any, layer_index: int, pad_token_id: int, chunk_size: int | None = None
+    ) -> None:
+        """chunk_size: feed single unpadded sequences longer than this in chunks with a KV
+        cache, so attention scores are [heads, chunk, T] instead of [heads, T, T]. Needed for
+        fp32 on T4, where SDPA falls back to the math kernel (GQA) and a 4k sequence needs
+        ~1.7 GiB of scores per layer. Exact up to float rounding."""
         assert_not_quantized(model)
+        self.chunk_size = chunk_size
         self.model = model.eval()
         self.layer_index = layer_index
         self.pad_token_id = pad_token_id
@@ -94,11 +101,11 @@ class LayerExtractor:
 
     @torch.no_grad()
     def extract(self, batch_ids: Sequence[Sequence[int]]) -> list[Extraction]:
-        captured: dict[str, torch.Tensor] = {}
+        pieces: list[torch.Tensor] = []
 
         def hook(_m: Any, _i: Any, out: Any) -> None:
             h = out[0] if isinstance(out, tuple) else out
-            captured["h"] = h.detach().clone()
+            pieces.append(h.detach().clone())
 
         lengths = [len(x) for x in batch_ids]
         t = max(lengths)
@@ -111,15 +118,27 @@ class LayerExtractor:
         # Run the decoder body only: the LM head would build [B, T, vocab] logits
         # (~7 GiB at B=8, T=4096) that we never use.
         body = getattr(self.model, "model", self.model)
-        # No padding -> no mask: SDPA then takes its causal memory-efficient kernel instead of
-        # materialising [B, heads, T, T] scores (1.7 GiB/row at T=4096 in fp32 on a T4).
         attn_mask = None if bool(mask.all()) else mask.to(device)
+        chunked = self.chunk_size is not None and len(batch_ids) == 1 and t > self.chunk_size
         handle = self._layer.register_forward_hook(hook)
         try:
-            body(input_ids=ids.to(device), attention_mask=attn_mask, use_cache=False)
+            if chunked:
+                from transformers import DynamicCache
+
+                cache = DynamicCache()
+                kw = _cache_kwarg(body)
+                for c in range(0, t, int(self.chunk_size)):
+                    body(
+                        input_ids=ids[:, c : c + int(self.chunk_size)].to(device),
+                        use_cache=True,
+                        **{kw: cache},
+                    )
+                del cache
+            else:
+                body(input_ids=ids.to(device), attention_mask=attn_mask, use_cache=False)
         finally:
             handle.remove()
-        h = captured["h"]
+        h = torch.cat([x.to(pieces[0].device) for x in pieces], dim=1)
         if not torch.isfinite(h).all():
             raise FloatingPointError("non-finite activations (fp16 overflow?)")
         h = h.float().cpu()
@@ -127,6 +146,14 @@ class LayerExtractor:
             Extraction(hidden=h[i, :n].clone(), token_ids=list(batch_ids[i]))
             for i, n in enumerate(lengths)
         ]
+
+
+def _cache_kwarg(model: Any) -> str:
+    """transformers renamed `past_key_values` -> `cache` (old name removed in 5.40)."""
+    import inspect
+
+    params = inspect.signature(model.forward).parameters
+    return "cache" if "cache" in params else "past_key_values"
 
 
 class ActivationMonitor:

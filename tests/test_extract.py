@@ -67,6 +67,29 @@ def test_right_padding_does_not_change_activations():
     assert batched[0].hidden.shape[0] == len(short)
 
 
+@pytest.mark.parametrize("chunk", [7, 16, 64, 1000])
+def test_chunked_extraction_matches_full(chunk):
+    """KV-cached chunking (used for fp32 on T4) must give the same activations."""
+    model = make_tiny_qwen(VOCAB, n_layers=TINY_LAYERS, seed=4)
+    ids = [list(range(5, 105))]
+    full = LayerExtractor(model, 2, 0).extract(ids)[0].hidden
+    got = LayerExtractor(model, 2, 0, chunk_size=chunk).extract(ids)[0].hidden
+    assert got.shape == full.shape
+    torch.testing.assert_close(got, full, atol=1e-5, rtol=1e-4)
+
+
+def test_chunked_body_only_model_matches_full():
+    from transformers import Qwen2Model
+
+    full_lm = make_tiny_qwen(VOCAB, n_layers=3, seed=5)
+    body = Qwen2Model(full_lm.config)
+    body.load_state_dict(full_lm.model.state_dict())
+    ids = [list(range(9, 140))]
+    a = LayerExtractor(full_lm, 2, 0).extract(ids)[0].hidden
+    b = LayerExtractor(body.eval(), 2, 0, chunk_size=32).extract(ids)[0].hidden
+    torch.testing.assert_close(a, b, atol=1e-5, rtol=1e-4)
+
+
 def test_extract_never_runs_lm_head():
     """The LM head's [B, T, vocab] logits OOM'd a 24 GB L4; extraction must skip it."""
     model = make_tiny_qwen(VOCAB)

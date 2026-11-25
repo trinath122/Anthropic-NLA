@@ -158,7 +158,13 @@ def stage_extract(
             continue
         model = be.load_extractor(tag)
         pad = be.tokenizer.pad_token_id
-        ext = LayerExtractor(model, int(cfg["layer"]), pad if pad is not None else 0)
+        chunk = prof.get("extract_chunk")
+        ext = LayerExtractor(
+            model,
+            int(cfg["layer"]),
+            pad if pad is not None else 0,
+            chunk_size=None if chunk is None else int(chunk),
+        )
         bs = int(prof["extract_batch"])
         budget = int(prof.get("extract_token_budget", 1 << 30))
         mon_path = ck.local_dir / f"monitor-extract-{tag}.json"
