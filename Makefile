@@ -4,7 +4,7 @@ export UV_PROJECT_ENVIRONMENT ?= $(HOME)/.venvs/open-nla-audits
 UV := uv
 PY := $(UV) run python
 
-.PHONY: install lint format test test-offline check-providers secret-scan prepush hooks
+.PHONY: install lint format test test-offline check-providers baseline secret-scan prepush hooks
 
 install:
 	$(UV) sync --python 3.11
@@ -26,6 +26,11 @@ test-offline:
 # Day-1 check: which free providers/models answer with your keys (needs .env)
 check-providers:
 	$(PY) scripts/check_providers.py --config configs/llm.yaml
+
+# Step 1 baseline FVE (GPU: run via notebooks/step1_{kaggle,colab}.ipynb). PROFILE=kaggle|colab
+PROFILE ?= kaggle
+baseline:
+	$(PY) -m nla_audit.experiments.step1_baseline run --config configs/step1.yaml --profile $(PROFILE) --sync
 
 # Scan everything git would push for secrets / forbidden files
 secret-scan:

@@ -123,6 +123,50 @@ class LayerExtractor:
         ]
 
 
+class ActivationMonitor:
+    """fp16 validity check: hook EVERY decoder block, track max |h| and non-finite outputs.
+
+    Use as a context manager around forward/generate calls. `report()` gives per-block
+    max-abs (fp16 overflows at 65504) and the count of forwards with inf/NaN.
+    """
+
+    def __init__(self, model: Any) -> None:
+        self.layers = list(_decoder_layers(model))
+        self.max_abs = [0.0] * len(self.layers)
+        self.nonfinite = [0] * len(self.layers)
+        self._handles: list[Any] = []
+
+    def _hook(self, i: int) -> Any:
+        def fn(_m: Any, _inp: Any, out: Any) -> None:
+            h = out[0] if isinstance(out, tuple) else out
+            finite = torch.isfinite(h)
+            if not bool(finite.all()):
+                self.nonfinite[i] += 1
+            m = h.detach().abs().masked_fill(~finite, 0).amax()
+            self.max_abs[i] = max(self.max_abs[i], float(m))
+
+        return fn
+
+    def __enter__(self) -> ActivationMonitor:
+        self._handles = [
+            layer.register_forward_hook(self._hook(i)) for i, layer in enumerate(self.layers)
+        ]
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        for h in self._handles:
+            h.remove()
+        self._handles = []
+
+    def report(self) -> dict[str, Any]:
+        return {
+            "max_abs_per_block": [round(x, 3) for x in self.max_abs],
+            "max_abs": max(self.max_abs, default=0.0),
+            "nonfinite_forwards_per_block": list(self.nonfinite),
+            "any_nonfinite": any(self.nonfinite),
+        }
+
+
 def load_truncated_model(
     model_name: str, layer_index: int, dtype: torch.dtype, device_map: str | dict = "auto"
 ) -> Any:

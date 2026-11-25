@@ -1,0 +1,52 @@
+# Step 1 — baseline FVE of the released Qwen2.5-7B L20 NLA (plan Step 1 + amendments 2, 6, 8).
+#   python -m nla_audit.experiments.step1_baseline run --config configs/step1.yaml --profile kaggle
+# Thresholds below are pre-registered: do not edit after seeing results.
+
+run_name: step1_baseline
+seed: 0
+base_model: Qwen/Qwen2.5-7B-Instruct      # AV/AR model cards: fine-tuned from this
+av_repo: kitft/nla-qwen2.5-7b-L20-av
+ar_repo: kitft/nla-qwen2.5-7b-L20-ar
+layer: 20                                  # asserted == sidecar extraction_layer_index
+
+data:
+  ufw:                                     # raw text, add_special_tokens=True
+    repo: openbmb/Ultra-FineWeb
+    file: data/ultrafineweb_en/ultrafineweb-en-part-2048-of-2048.parquet
+    n: 500
+    pool: 3000
+    min_chars: 400
+  wildchat:                                # Qwen chat template
+    repo: allenai/WildChat-1M
+    file: data/train-00013-of-00014.parquet
+    n: 500
+    pool: 3000
+    language: English
+
+av:
+  max_new_tokens: 150
+  temperature: 1.0
+
+report:
+  reference_denominator: 0.7335            # training-set Var(v_nrm), official examples file
+  pass_denominator: own                    # "own" (this sample's μ) or "reference"
+  pass_band: [0.60, 0.78]                  # amendment 6
+  shuffled_max: 0.05                       # amendment 6
+  precision_cos_min: 0.999                 # fp16 vs fp32 (design decision 2)
+  n_boot: 2000
+
+shard_size: 50
+
+profiles:
+  kaggle:                                  # 2×T4, no bf16
+    extract_dtypes: [fp16, fp32]           # fp32 = ground truth for the fp16 validity check
+    nla_dtype: fp16
+    extract_batch: 8
+    av_batch: 32
+    ar_batch: 16
+  colab:                                   # L4 / A100: bf16 reference (amendment 8)
+    extract_dtypes: [bf16]
+    nla_dtype: bf16
+    extract_batch: 8
+    av_batch: 64
+    ar_batch: 32

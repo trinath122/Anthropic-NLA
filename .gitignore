@@ -15,11 +15,12 @@ __pycache__/
 .ruff_cache/
 
 # data / artifacts live on Hugging Face, not git
-artifacts/
-data/
-outputs/
-cache/
-wandb/
+/artifacts/
+/data/
+/outputs/
+/cache/
+/wandb/
+/runs/
 *.parquet
 *.safetensors
 *.pt
