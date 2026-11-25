@@ -14,10 +14,6 @@ ledger_path: cache/llm_ledger.jsonl
 gen_allowed_licences: [apache-2.0, mit]
 
 providers:
-  cerebras:
-    base_url: https://api.cerebras.ai/v1
-    api_key_env: CEREBRAS_API_KEY
-    requests_per_minute: 30
   groq:
     base_url: https://api.groq.com/openai/v1
     api_key_env: GROQ_API_KEY
@@ -32,29 +28,28 @@ providers:
     requests_per_minute: 20
 
 # family + licence per model. "licence" here means: may outputs of this model be
-# used as TRAINING DATA under its terms? (Gemini API terms: no. Llama: attribution-encumbered.)
+# used as TRAINING DATA under its terms? (Gemini API terms: no.)
+# Verified 2026-11-25 with `make check-providers` + HF model cards (gpt-oss, Qwen3.8: apache-2.0).
+# Cerebras dropped (requires a card). Groq no longer serves llama-3.3 / qwen3-32b;
+# Gemini 2.5 flash models 404 on generation.
 models:
-  cerebras/gpt-oss-120b:            { family: gpt-oss, licence: apache-2.0 }
   groq/openai/gpt-oss-120b:         { family: gpt-oss, licence: apache-2.0 }
-  cerebras/qwen-3-235b-a22b-instruct-2507: { family: qwen3, licence: apache-2.0 }
-  groq/qwen/qwen3-32b:              { family: qwen3, licence: apache-2.0 }
-  gemini/gemini-2.5-flash:          { family: gemini, licence: gemini-api-terms }
-  gemini/gemini-2.5-flash-lite:     { family: gemini, licence: gemini-api-terms }
-  groq/llama-3.3-70b-versatile:     { family: llama, licence: llama-3.3 }
-  cerebras/llama-3.3-70b:           { family: llama, licence: llama-3.3 }
+  groq/qwen/qwen3.8-27b:            { family: qwen3, licence: apache-2.0 }
+  groq/openai/gpt-oss-20b:          { family: gpt-oss, licence: apache-2.0 }
+  gemini/gemini-3.5-flash:          { family: gemini, licence: gemini-api-terms }
+  gemini/gemini-3.5-flash-lite:     { family: gemini, licence: gemini-api-terms }
+  "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free": { family: nemotron, licence: nvidia-open-model }
 
 # Ordered fallback chains per role.
 roles:
   gen:
-    - cerebras/gpt-oss-120b
     - groq/openai/gpt-oss-120b
-    - cerebras/qwen-3-235b-a22b-instruct-2507
-    - groq/qwen/qwen3-32b
+    - groq/qwen/qwen3.8-27b
+    - groq/openai/gpt-oss-20b
   judge:
-    - gemini/gemini-2.5-flash
-    - groq/llama-3.3-70b-versatile
-    - cerebras/llama-3.3-70b
-    - gemini/gemini-2.5-flash-lite
+    - gemini/gemini-3.5-flash
+    - "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free"
+    - gemini/gemini-3.5-flash-lite
 
 retry:
   max_attempts_per_model: 5

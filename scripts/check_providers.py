@@ -52,7 +52,7 @@ def main() -> int:
                     r = client.chat.completions.create(
                         model=m,
                         messages=[{"role": "user", "content": "Reply with the single word OK."}],
-                        max_tokens=5,
+                        max_tokens=300,  # reasoning models spend tokens before answering
                         temperature=0,
                     )
                     status += f", ping -> {(r.choices[0].message.content or '').strip()[:20]!r}"
