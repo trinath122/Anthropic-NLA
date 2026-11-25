@@ -41,7 +41,7 @@ profiles:
   kaggle:                                  # 2×T4, no bf16
     extract_dtypes: [fp16, fp32]           # fp32 = ground truth for the fp16 validity check
     nla_dtype: fp16
-    extract_batch: 8
+    extract_batch: 4
     av_batch: 32
     ar_batch: 16
   colab:                                   # L4 / A100: bf16 reference (amendment 8)

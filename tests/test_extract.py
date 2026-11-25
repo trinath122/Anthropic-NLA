@@ -67,6 +67,15 @@ def test_right_padding_does_not_change_activations():
     assert batched[0].hidden.shape[0] == len(short)
 
 
+def test_extract_never_runs_lm_head():
+    """The LM head's [B, T, vocab] logits OOM'd a 24 GB L4; extraction must skip it."""
+    model = make_tiny_qwen(VOCAB)
+    called = []
+    model.lm_head.register_forward_hook(lambda *a: called.append(1))
+    LayerExtractor(model, 1, pad_token_id=0).extract([list(range(3, 63))])
+    assert not called
+
+
 def test_refuses_quantized():
     model = make_tiny_qwen(VOCAB)
     model.is_loaded_in_4bit = True

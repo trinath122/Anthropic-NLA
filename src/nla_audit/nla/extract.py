@@ -108,9 +108,12 @@ class LayerExtractor:
             ids[i, : len(x)] = torch.tensor(list(x), dtype=torch.long)
             mask[i, : len(x)] = 1
         device = self.model.get_input_embeddings().weight.device
+        # Run the decoder body only: the LM head would build [B, T, vocab] logits
+        # (~7 GiB at B=8, T=4096) that we never use.
+        body = getattr(self.model, "model", self.model)
         handle = self._layer.register_forward_hook(hook)
         try:
-            self.model(input_ids=ids.to(device), attention_mask=mask.to(device), use_cache=False)
+            body(input_ids=ids.to(device), attention_mask=mask.to(device), use_cache=False)
         finally:
             handle.remove()
         h = captured["h"]
