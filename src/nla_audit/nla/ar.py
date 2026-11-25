@@ -28,6 +28,7 @@ class ARScorer:
         *,
         dtype: torch.dtype,
         device_map: str | dict = "auto",
+        max_memory: dict | None = None,
         tokenizer: Any | None = None,
     ) -> None:
         from safetensors.torch import load_file
@@ -41,7 +42,7 @@ class ARScorer:
         verify_ar_tokenizer(self.sidecar, self.tokenizer)
 
         backbone = AutoModelForCausalLM.from_pretrained(
-            str(checkpoint_dir), dtype=dtype, device_map=device_map
+            str(checkpoint_dir), dtype=dtype, device_map=device_map, max_memory=max_memory
         )
         n_layers = backbone.config.num_hidden_layers
         expected = self.sidecar.extraction_layer_index + 1

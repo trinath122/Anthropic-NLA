@@ -72,6 +72,30 @@ def test_compare_tags_identical_passes_and_noise_fails():
     assert not noisy["pass"]
 
 
+def test_token_batches_respect_limits():
+    seqs = [[0] * n for n in (10, 10, 50, 5, 5, 5, 200, 3)]
+    batches = s1.token_batches(seqs, max_n=3, max_tokens=60)
+    assert [x for b in batches for x in b] == seqs  # order preserved, nothing dropped
+    for b in batches:
+        assert len(b) <= 3
+        assert len(b) == 1 or len(b) * max(map(len, b)) <= 60
+    assert [len(b) for b in batches] == [2, 1, 3, 1, 1]
+
+
+def test_extractor_works_on_decoder_body_without_lm_head():
+    from transformers import Qwen2Model
+
+    full = make_tiny_qwen(100, n_layers=3)
+    body = Qwen2Model(full.config)
+    body.load_state_dict(full.model.state_dict())
+    from nla_audit.nla.extract import LayerExtractor
+
+    ids = [list(range(3, 63))]
+    a = LayerExtractor(full, 1, 0).extract(ids)[0].hidden
+    b = LayerExtractor(body.eval(), 1, 0).extract(ids)[0].hidden
+    torch.testing.assert_close(a, b)
+
+
 def test_monitor_flags_nonfinite():
     model = make_tiny_qwen(100, n_layers=2)
     with ActivationMonitor(model) as mon:

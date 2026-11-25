@@ -84,6 +84,25 @@ def gpu_info() -> list[dict[str, Any]]:
     return out
 
 
+def gpu_max_memory(headroom_gib: float = 3.0) -> dict[Any, str] | None:
+    """`max_memory` for device_map="auto" that leaves room for activations on every GPU.
+
+    Without it, accelerate packs GPU 0 to the brim with weights and the first forward OOMs
+    (seen with fp32 Qwen-7B blocks 0-20 on 2×T4). No "cpu" key: never silently offload.
+    """
+    try:
+        import torch
+    except ImportError:
+        return None
+    if not torch.cuda.is_available():
+        return None
+    out: dict[Any, str] = {}
+    for i in range(torch.cuda.device_count()):
+        total = torch.cuda.get_device_properties(i).total_memory / 2**30
+        out[i] = f"{max(total - headroom_gib, 1.0):.1f}GiB"
+    return out
+
+
 def pick_dtype(prefer: str = "auto") -> Any:
     """bf16 on Ampere+ (L4/A100/RTX 40xx), fp16 on T4 (sm75), fp32 on CPU.
 

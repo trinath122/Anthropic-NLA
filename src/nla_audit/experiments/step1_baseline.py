@@ -160,14 +160,14 @@ def stage_extract(
         pad = be.tokenizer.pad_token_id
         ext = LayerExtractor(model, int(cfg["layer"]), pad if pad is not None else 0)
         bs = int(prof["extract_batch"])
+        budget = int(prof.get("extract_token_budget", 1 << 30))
         mon_path = ck.local_dir / f"monitor-extract-{tag}.json"
         prev = json.loads(mon_path.read_text()) if mon_path.exists() else None
         with ActivationMonitor(model) as mon:
             for k, s, e in todo:
                 prefixes = list(items["prefix_ids"].iloc[s:e])
                 acts = []
-                for b in range(0, len(prefixes), bs):
-                    batch = [list(map(int, x)) for x in prefixes[b : b + bs]]
+                for batch in token_batches([list(map(int, x)) for x in prefixes], bs, budget):
                     acts.extend(x.hidden[-1].numpy() for x in ext.extract(batch))
                 np.save(ck.shard_path(f"extract-{tag}-{k:03d}", ".npy"), np.stack(acts))
                 rep = _merge_monitor(prev, mon.report())
@@ -175,6 +175,26 @@ def stage_extract(
                 ck.mark_done(f"extract-{tag}-{k:03d}")
         del ext, model, mon
         free_gpu()
+
+
+def token_batches(seqs: list[list[int]], max_n: int, max_tokens: int) -> list[list[list[int]]]:
+    """Consecutive batches with <= max_n rows and padded size (rows × longest) <= max_tokens.
+
+    A single sequence longer than max_tokens still gets its own batch.
+    """
+    out: list[list[list[int]]] = []
+    cur: list[list[int]] = []
+    longest = 0
+    for s in seqs:
+        new_longest = max(longest, len(s))
+        if cur and (len(cur) + 1 > max_n or (len(cur) + 1) * new_longest > max_tokens):
+            out.append(cur)
+            cur, new_longest = [], len(s)
+        cur.append(s)
+        longest = new_longest
+    if cur:
+        out.append(cur)
+    return out
 
 
 def _merge_monitor(prev: dict | None, cur: dict) -> dict:
@@ -481,7 +501,7 @@ def real_backends(cfg: dict, profile: str) -> Backends:
     from nla_audit.nla.av import AVRunner
     from nla_audit.nla.extract import load_truncated_model
     from nla_audit.nla.sidecar import NLASidecar
-    from nla_audit.runtime.env import pick_dtype, provenance
+    from nla_audit.runtime.env import gpu_max_memory, pick_dtype, provenance
 
     prof = cfg["profiles"][profile]
     nla_dtype = pick_dtype(prof["nla_dtype"])
@@ -495,7 +515,9 @@ def real_backends(cfg: dict, profile: str) -> Backends:
         }
 
     def load_extractor(tag: str) -> Any:
-        return load_truncated_model(cfg["base_model"], int(cfg["layer"]), pick_dtype(tag))
+        return load_truncated_model(
+            cfg["base_model"], int(cfg["layer"]), pick_dtype(tag), max_memory=gpu_max_memory()
+        )
 
     def load_av() -> Any:
         d = snapshot_download(cfg["av_repo"])
@@ -504,11 +526,18 @@ def real_backends(cfg: dict, profile: str) -> Backends:
             raise AssertionError(
                 f"AV is for layer {side.extraction_layer_index}, not {cfg['layer']}"
             )
-        model = AutoModelForCausalLM.from_pretrained(d, dtype=nla_dtype, device_map="auto")
+        model = AutoModelForCausalLM.from_pretrained(
+            d, dtype=nla_dtype, device_map="auto", max_memory=gpu_max_memory()
+        )
         return AVRunner(model, AutoTokenizer.from_pretrained(d), side)
 
     def load_ar() -> Any:
-        return ARScorer(snapshot_download(cfg["ar_repo"]), dtype=nla_dtype, device_map="auto")
+        return ARScorer(
+            snapshot_download(cfg["ar_repo"]),
+            dtype=nla_dtype,
+            device_map="auto",
+            max_memory=gpu_max_memory(),
+        )
 
     def prov(tag: str | None) -> dict[str, Any]:
         return provenance(None if tag is None else pick_dtype(tag))

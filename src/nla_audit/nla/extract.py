@@ -171,15 +171,22 @@ class ActivationMonitor:
 
 
 def load_truncated_model(
-    model_name: str, layer_index: int, dtype: torch.dtype, device_map: str | dict = "auto"
+    model_name: str,
+    layer_index: int,
+    dtype: torch.dtype,
+    device_map: str | dict = "auto",
+    max_memory: dict | None = None,
 ) -> Any:
-    """Load only blocks 0..K (K+1 blocks): ~10 GiB for Qwen2.5-7B L20 in fp16/bf16."""
-    from transformers import AutoConfig, AutoModelForCausalLM
+    """Decoder body with blocks 0..K only (no LM head): ~10 GiB fp16/bf16, ~20 GiB fp32.
+
+    `AutoModel` skips the 545M-param LM head (2.2 GiB in fp32) that extraction never uses.
+    """
+    from transformers import AutoConfig, AutoModel
 
     cfg = AutoConfig.from_pretrained(model_name)
     cfg.num_hidden_layers = layer_index + 1
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name, config=cfg, dtype=dtype, device_map=device_map
+    model = AutoModel.from_pretrained(
+        model_name, config=cfg, dtype=dtype, device_map=device_map, max_memory=max_memory
     )
     assert_not_quantized(model)
     return model.eval()
