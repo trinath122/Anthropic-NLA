@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from nla_audit.nla.metrics import (
+    FVEResampler,
     baseline_variance,
     bootstrap_ci,
     cosine,
@@ -73,3 +74,14 @@ def test_hierarchical_bootstrap():
         groups, lambda gs: float(np.mean([g.mean() for g in gs])), n_boot=500
     )
     assert lo <= point <= hi
+
+
+def test_fve_resampler_matches_fve_on_resamples(gold):
+    rng = np.random.default_rng(3)
+    pred = gold + rng.normal(scale=1.5, size=gold.shape)
+    fr = FVEResampler(gold, pred, SCALE)
+    for _ in range(5):
+        idx = rng.integers(0, len(gold), size=len(gold))
+        assert fr(idx) == pytest.approx(fve(gold[idx], pred[idx], SCALE), abs=1e-9)
+        assert fr(idx, 0.7335) == pytest.approx(fve(gold[idx], pred[idx], SCALE, 0.7335), abs=1e-9)
+    assert fr(np.arange(len(gold))) == pytest.approx(fve(gold, pred, SCALE), abs=1e-9)

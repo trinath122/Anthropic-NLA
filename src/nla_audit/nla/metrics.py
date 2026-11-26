@@ -54,6 +54,31 @@ def fve(
     return 1.0 - num / den
 
 
+class FVEResampler:
+    """`fve(gold[idx], pred[idx], ...)` for many index resamples, without re-normalising.
+
+    Normalises once, then each call needs only two weighted sums over the rows:
+    num = Σ w·mse / n and Var = Σ w·|g|²/(n·d) − |μ|²/d with μ = Σ w·g / n.
+    """
+
+    def __init__(self, gold: np.ndarray, pred: np.ndarray, mse_scale: float) -> None:
+        self.g = normalize_rows(gold, mse_scale)
+        self.mse = mse_nrm(gold, pred, mse_scale)
+        self.sq = (self.g**2).sum(axis=-1)
+        self.n, self.d = self.g.shape
+
+    def __call__(self, idx: np.ndarray, denominator: float | None = None) -> float:
+        w = np.bincount(idx, minlength=self.n).astype(np.float64)
+        m = w.sum()
+        num = float(w @ self.mse) / m
+        if denominator is None:
+            mu = (w @ self.g) / m
+            den = float(w @ self.sq) / (m * self.d) - float(mu @ mu) / self.d
+        else:
+            den = float(denominator)
+        return 1.0 - num / den
+
+
 def bootstrap_ci(
     n: int,
     stat: Callable[[np.ndarray], float],

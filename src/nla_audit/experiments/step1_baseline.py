@@ -41,7 +41,14 @@ from nla_audit.nla.extract import (
     sample_positions,
     text_token_ids,
 )
-from nla_audit.nla.metrics import baseline_variance, bootstrap_ci, cosine, fve, mse_nrm
+from nla_audit.nla.metrics import (
+    FVEResampler,
+    baseline_variance,
+    bootstrap_ci,
+    cosine,
+    fve,
+    mse_nrm,
+)
 from nla_audit.runtime.resume import Checkpointer
 
 SOURCES = ("ufw", "wildchat")
@@ -287,8 +294,10 @@ def stage_ar(cfg: dict, prof: dict, ck: Checkpointer, be: Backends, n: int) -> N
 
 # --------------------------------------------------------------------------- stage 5: report
 def _fve_ci(gold, pred, scale, den, n_boot, seed) -> dict[str, float]:
+    fr = FVEResampler(gold, pred, scale)
+
     def stat(idx: np.ndarray) -> float:
-        return fve(gold[idx], pred[idx], scale, den)
+        return fr(idx, den)
 
     point, lo, hi = bootstrap_ci(len(gold), stat, n_boot=n_boot, seed=seed)
     return {"fve": point, "lo": lo, "hi": hi}
@@ -373,8 +382,10 @@ def compare_tags(
     """Precision agreement: per-activation cos(a, b) and paired-bootstrap ΔFVE (own μ)."""
     cos = cosine(gold_a, gold_b)
 
+    fa, fb = FVEResampler(gold_a, pred_a, mse_scale), FVEResampler(gold_b, pred_b, mse_scale)
+
     def diff(idx: np.ndarray) -> float:
-        return fve(gold_a[idx], pred_a[idx], mse_scale) - fve(gold_b[idx], pred_b[idx], mse_scale)
+        return fa(idx) - fb(idx)
 
     d, lo, hi = bootstrap_ci(len(gold_a), diff, n_boot=n_boot, seed=seed)
     return {
